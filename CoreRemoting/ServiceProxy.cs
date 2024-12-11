@@ -63,7 +63,7 @@ namespace CoreRemoting
         }
 
         /// <summary>
-        /// Intercepts a synchronous call of a member on the proxy object. 
+        /// Intercepts a synchronous call of a member on the proxy object.
         /// </summary>
         /// <param name="invocation">Intercepted invocation details</param>
         /// <exception cref="RemotingException">Thrown if a remoting operation has been failed</exception>
@@ -77,7 +77,7 @@ namespace CoreRemoting
 
             if (oneWay && returnType != typeof(void))
                 throw new NotSupportedException("OneWay methods must not have a return type.");
-            
+
             var arguments = MapArguments(invocation.Arguments);
 
             var remoteMethodCallMessage =
@@ -87,19 +87,19 @@ namespace CoreRemoting
                     targetMethod: method,
                     args: arguments);
 
-            var sendTask = 
+            var sendTask =
                 _client.InvokeRemoteMethod(remoteMethodCallMessage, oneWay);
 
             if (!sendTask.Wait(
                     _client.Config.SendTimeout == 0
-                        ? -1 // Infinite 
+                        ? -1 // Infinite
                         : _client.Config.SendTimeout * 1000))
             {
                 throw new TimeoutException($"Send timeout ({_client.Config.SendTimeout}) exceeded.");
             }
 
             var clientRpcContext = sendTask.Result;
-            
+
             if (clientRpcContext.Error)
             {
                 if (clientRpcContext.RemoteException == null)
@@ -119,7 +119,7 @@ namespace CoreRemoting
             var parameterInfos = method.GetParameters();
 
             var serializer = _client.Serializer;
-            
+
             foreach (var outParameterValue in resultMessage.OutParameters)
             {
                 var parameterInfo =
@@ -153,17 +153,17 @@ namespace CoreRemoting
                         ? returnValueEnvelope.Value
                         : resultMessage.ReturnValue;
 
-            // Create a proxy to remote service, if return type is a service reference  
+            // Create a proxy to remote service, if return type is a service reference
             if (returnValue is ServiceReference serviceReference)
                 returnValue = _client.CreateProxy(serviceReference);
 
             invocation.ReturnValue = returnValue;
-                
+
             CallContext.RestoreFromSnapshot(resultMessage.CallContextSnapshot);
         }
 
         /// <summary>
-        /// Intercepts a asynchronous call of a member on the proxy object. 
+        /// Intercepts a asynchronous call of a member on the proxy object.
         /// </summary>
         /// <param name="invocation">Intercepted invocation details</param>
         /// <returns>Asynchronous running task</returns>
@@ -178,7 +178,7 @@ namespace CoreRemoting
 
             if (oneWay && returnType != typeof(void))
                 throw new NotSupportedException("OneWay methods must not have a return type.");
-            
+
             var arguments = MapArguments(invocation.Arguments);
 
             var remoteMethodCallMessage =
@@ -188,9 +188,9 @@ namespace CoreRemoting
                     targetMethod: method,
                     args: arguments);
 
-            var clientRpcContext = 
+            var clientRpcContext =
                 await _client.InvokeRemoteMethod(remoteMethodCallMessage, oneWay);
-            
+
             if (clientRpcContext.Error)
             {
                 if (clientRpcContext.RemoteException == null)
@@ -207,16 +207,22 @@ namespace CoreRemoting
                 return;
             }
 
-            invocation.Result =
+            var returnValue =
                 resultMessage.IsReturnValueNull
                     ? null
                     : resultMessage.ReturnValue is Envelope returnValueEnvelope
                         ? returnValueEnvelope.Value
                         : resultMessage.ReturnValue;
 
+            // Create a proxy to remote service, if return type is a service reference
+            if (returnValue is ServiceReference serviceReference)
+                returnValue = _client.CreateProxy(serviceReference);
+
+            invocation.Result = returnValue;
+
             CallContext.RestoreFromSnapshot(resultMessage.CallContextSnapshot);
         }
-       
+
         /// <summary>
         /// Maps a delegate argument into a serializable RemoteDelegateInfo object.
         /// </summary>
@@ -294,7 +300,7 @@ namespace CoreRemoting
 
                     return argument;
                 }).ToArray();
-            
+
             return mappedArguments;
         }
     }

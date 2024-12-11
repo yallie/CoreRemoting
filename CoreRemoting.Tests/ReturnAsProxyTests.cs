@@ -4,6 +4,7 @@ using System.Threading;
 using CoreRemoting.ClassicRemotingApi;
 using CoreRemoting.Tests.Tools;
 using Xunit.Abstractions;
+using System.Threading.Tasks;
 
 namespace CoreRemoting.Tests
 {
@@ -19,9 +20,9 @@ namespace CoreRemoting.Tests
             _testOutputHelper = testOutputHelper;
             _serverFixture.Start();
         }
-        
+
         [Fact]
-        public void Call_on_Proxy_should_be_invoked_on_remote_service()
+        public void Call_on_Proxy_returned_by_sync_method_should_be_invoked_on_remote_service()
         {
             void ClientAction()
             {
@@ -29,7 +30,7 @@ namespace CoreRemoting.Tests
                 {
                     using var client = new RemotingClient(new ClientConfig()
                     {
-                        ConnectionTimeout = 0, 
+                        ConnectionTimeout = 0,
                         MessageEncryption = false,
                         ServerPort = _serverFixture.Server.Config.NetworkPort
                     });
@@ -51,6 +52,24 @@ namespace CoreRemoting.Tests
             var clientThread = new Thread(ClientAction);
             clientThread.Start();
             clientThread.Join();
+        }
+
+        [Fact]
+        public async Task Call_on_Proxy_returned_by_async_method_should_be_invoked_on_remote_service()
+        {
+            using var client = new RemotingClient(new ClientConfig()
+            {
+                ConnectionTimeout = 0,
+                MessageEncryption = false,
+                ServerPort = _serverFixture.Server.Config.NetworkPort
+            });
+
+            client.Connect();
+
+            var factoryServiceProxy = client.CreateProxy<IFactoryService>();
+            var testServiceProxy = await factoryServiceProxy.GetTestServiceAsync();
+
+            Assert.True(RemotingServices.IsTransparentProxy(testServiceProxy));
         }
     }
 }
