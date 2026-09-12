@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CoreRemoting.Authentication;
@@ -275,7 +276,8 @@ public class SessionResumeTests
         int serverPort,
         bool authenticationRequired,
         byte[] privateKeyBlob = null,
-        Guid? resumableSessionId = null)
+        Guid? resumableSessionId = null,
+        [CallerMemberName] string channelName = null)
     {
         var config = new ClientConfig()
         {
@@ -285,6 +287,7 @@ public class SessionResumeTests
             KeySize = KeySize,
             ServerHostName = "localhost",
             ServerPort = serverPort,
+            ChannelConnectionName = $"{channelName}:{MessageEncryption}",
             KeepSessionAliveInterval = 0,
             PrivateKeyBlob = privateKeyBlob,
             ResumableSessionId = resumableSessionId
@@ -325,7 +328,8 @@ public class SessionResumeTests
     private RemotingServer StartServer(
         int networkPort,
         bool authenticationRequired,
-        EventHandler<Exception> onServerError = null)
+        EventHandler<Exception> onServerError = null,
+        [CallerMemberName] string channelName = null)
     {
         var config = new ServerConfig()
         {
@@ -335,6 +339,7 @@ public class SessionResumeTests
             MessageEncryption = MessageEncryption,
             KeySize = KeySize,
             NetworkPort = networkPort,
+            ChannelConnectionName = $"{channelName}:{MessageEncryption}",
             AuthenticationRequired = authenticationRequired,
             AuthenticationProvider = authenticationRequired
                 ? new SrpAuthenticationProvider(new SampleAccountRepository())

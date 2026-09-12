@@ -10,7 +10,10 @@ public class SessionResumeTestsQuic : SessionResumeTests
 
     protected override IClientChannel ClientChannel => new QuicClientChannel();
 
-    protected override bool MessageEncryption => false;
+    public class SessionResumeTestsQuicNoEncryption : SessionResumeTestsQuic
+    {
+        protected override bool MessageEncryption => false;
 
-    protected override bool AuthenticationRequiredForResumeTests => false;
+        protected override bool AuthenticationRequiredForResumeTests => false;
+    }
 }

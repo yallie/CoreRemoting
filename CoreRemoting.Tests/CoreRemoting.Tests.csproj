@@ -18,7 +18,7 @@
         <Compile Remove="RpcTests_WebsocketSharp.cs" />
         <Compile Remove="RpcTests_WsClientWsharpServer.cs" />
         <Compile Remove="RpcTests_WsharpClientWsServer.cs" />
-        <Compile Remove="SessionResumeTestsQuic.cs" />
+        <Compile Remove="SessionResumeTests_Quic.cs" />
     </ItemGroup>
 
     <!-- .NET 8.0 only: include BinaryFormatter and a small bunch of other tests -->
@@ -33,7 +33,7 @@
         <Compile Include="RpcTests_Quic.cs">
             <DependentUpon>RpcTests.cs</DependentUpon>
         </Compile>
-        <Compile Include="SessionResumeTestsQuic.cs">
+        <Compile Include="SessionResumeTests_Quic.cs">
             <DependentUpon>SessionResumeTests.cs</DependentUpon>
         </Compile>
         <ProjectReference Include="..\CoreRemoting.Channels.Quic\CoreRemoting.Channels.Quic.csproj" />
@@ -82,7 +82,7 @@
       <Compile Update="RpcTests_*.cs">
         <DependentUpon>RpcTests.cs</DependentUpon>
       </Compile>
-      <Compile Update="SessionResumeTests?*.cs">
+      <Compile Update="SessionResumeTests_*.cs">
         <DependentUpon>SessionResumeTests.cs</DependentUpon>
       </Compile>
       <Compile Update="SessionTests_*.cs">

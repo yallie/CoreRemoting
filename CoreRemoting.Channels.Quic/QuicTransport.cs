@@ -137,7 +137,7 @@ public abstract class QuicTransport : IAsyncDisposable
                 return false;
 
             LastException = ex as NetworkException ??
-            new NetworkException(ex.Message, ex);
+                new NetworkException(ex.Message, ex);
 
             OnErrorOccured(ex.Message, ex);
             return false;
