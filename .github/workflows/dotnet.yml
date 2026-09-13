@@ -56,7 +56,7 @@ jobs:
       run: dotnet test --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
     - name: Update Pantry badge
-      if: always()
+      if: always() && github.event_name == 'push'
       shell: bash
       env:
         PANTRY_ID: c8c30959-454c-468f-9df1-13957368300e

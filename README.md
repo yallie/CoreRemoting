@@ -1,6 +1,10 @@
 # CoreRemoting
 RPC library (.NET Standard 2.0) with classic .NET Remoting flavour
 
+![Linux](https://img.shields.io/endpoint?url=https://getpantry.cloud/apiv1/pantry/c8c30959-454c-468f-9df1-13957368300e/basket/core-remoting-test-counters)
+![Windows](https://img.shields.io/endpoint?url=https://getpantry.cloud/apiv1/pantry/c8c30959-454c-468f-9df1-13957368300e/basket/core-remoting-wintest-counters)
+[![NuGet](https://img.shields.io/nuget/dt/CoreRemoting?label=nuget&color=0B6CFF)](https://www.nuget.org/packages/CoreRemoting)
+
 NuGet package: https://www.nuget.org/packages/CoreRemoting/<br>
 [Documentation](docs/Home.md)
 
