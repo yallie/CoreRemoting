@@ -46,13 +46,6 @@ jobs:
         sudo apt-get install -y libmsquic
         ldconfig -p | grep libmsquic || echo "libmsquic not found in ldconfig"
 
-    - name: Prepare QUIC log directory (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        mkdir -p ${{ runner.temp }}/quic
-        touch ${{ runner.temp }}/quic/quic.log
-        chmod 666 ${{ runner.temp }}/quic/quic.log
-
     - name: Restore dependencies
       run: dotnet restore
 
@@ -60,18 +53,36 @@ jobs:
       run: dotnet build --no-restore
 
     - name: Test
-      run: dotnet test --no-build --verbosity normal
-      env:
-        QUIC_LOG_FILE: ${{ runner.temp }}/quic/quic.log
-        QUIC_LOG_LEVEL: 5
+      run: dotnet test --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
-    - name: Upload QUIC log on failure
-      if: failure() && runner.os == 'Linux'
+    - name: Upload TRX
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: quic-log-${{ matrix.os }}
-        path: ${{ runner.temp }}/quic/quic.log
+        name: trx-${{ matrix.os }}
+        path: '**/TestResults/test-results.trx'
+        if-no-files-found: ignore
 
-    - name: Show QUIC log on failure (optional)
-      if: failure() && runner.os == 'Linux'
-      run: cat ${{ runner.temp }}/quic/quic.log || echo "No log file found"
+  badge:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: trx-*
+        path: trx
+    - shell: bash
+      env:
+        PANTRY_ID: ${{ secrets.PANTRY_ID }}
+      run: |
+        P=0; F=0
+        for f in $(find trx -name '*.trx'); do
+          P=$((P + $(grep -oP 'passed="\K[0-9]+' "$f" | head -n1)))
+          F=$((F + $(grep -oP 'failed="\K[0-9]+' "$f" | head -n1)))
+        done
+        T=$((P + F))
+        [ "$F" -eq 0 ] && C=brightgreen || C=critical
+        curl -sS -X POST "https://getpantry.cloud/apiv1/pantry/$PANTRY_ID/basket/core-remoting-test-counters" \
+          -H "Content-Type: application/json" \
+          -d "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"$P/$T passed\",\"color\":\"$C\"}"
