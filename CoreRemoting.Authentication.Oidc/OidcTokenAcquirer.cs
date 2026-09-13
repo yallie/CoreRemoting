@@ -431,7 +431,7 @@ public abstract class OidcTokenAcquirer : IAsyncDisposable, IDisposable
     /// <summary>
     /// Disposes the internally created <see cref="HttpClient"/>. A user-provided <see cref="HttpClient"/> is left untouched.
     /// </summary>
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (_ownsHttpClient)
         {
@@ -440,6 +440,7 @@ public abstract class OidcTokenAcquirer : IAsyncDisposable, IDisposable
         }
 
         GC.SuppressFinalize(this);
+        return default;
     }
 
     /// <summary>

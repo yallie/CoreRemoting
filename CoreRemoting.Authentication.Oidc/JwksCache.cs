@@ -147,10 +147,11 @@ public sealed class JwksCache : IAsyncDisposable, IDisposable
     /// <summary>
     /// Disposes the <see cref="HttpClient"/> owned by this instance.
     /// </summary>
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _httpClient.Dispose();
         GC.SuppressFinalize(this);
+        return default;
     }
 
     /// <summary>
