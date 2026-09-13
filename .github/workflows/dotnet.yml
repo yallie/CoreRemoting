@@ -55,34 +55,34 @@ jobs:
     - name: Test
       run: dotnet test --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
 
-    - name: Upload TRX
+    - name: Update Pantry badge
       if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: trx-${{ matrix.os }}
-        path: '**/TestResults/test-results.trx'
-        if-no-files-found: ignore
-
-  badge:
-    needs: build
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/download-artifact@v4
-      with:
-        pattern: trx-*
-        path: trx
-    - shell: bash
+      shell: bash
       env:
-        PANTRY_ID: ${{ secrets.PANTRY_ID }}
+        PANTRY_ID: c8c30959-454c-468f-9df1-13957368300e
       run: |
-        P=0; F=0
-        for f in $(find trx -name '*.trx'); do
-          P=$((P + $(grep -oP 'passed="\K[0-9]+' "$f" | head -n1)))
-          F=$((F + $(grep -oP 'failed="\K[0-9]+' "$f" | head -n1)))
-        done
-        T=$((P + F))
-        [ "$F" -eq 0 ] && C=brightgreen || C=critical
-        curl -sS -X POST "https://getpantry.cloud/apiv1/pantry/$PANTRY_ID/basket/core-remoting-test-counters" \
+        if [ "${{ runner.os }}" == "Linux" ]; then
+          BASKET=core-remoting-test-counters
+          LABEL=linux
+        else
+          BASKET=core-remoting-wintest-counters
+          LABEL=windows
+        fi
+
+        TRX=$(find . -name 'test-results.trx' | head -n1)
+        if [ -z "$TRX" ]; then
+          echo "No TRX file found; skipping badge update."
+          exit 0
+        fi
+
+        PASSED=$(grep -o 'passed="[0-9][0-9]*"' "$TRX" | head -n1 | tr -dc '0-9')
+        FAILED=$(grep -o 'failed="[0-9][0-9]*"' "$TRX" | head -n1 | tr -dc '0-9')
+        PASSED=${PASSED:-0}
+        FAILED=${FAILED:-0}
+        TOTAL=$((PASSED + FAILED))
+
+        [ "$FAILED" -eq 0 ] && COLOR=brightgreen || COLOR=critical
+
+        curl -sS -X POST "https://getpantry.cloud/apiv1/pantry/$PANTRY_ID/basket/$BASKET" \
           -H "Content-Type: application/json" \
-          -d "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"$P/$T passed\",\"color\":\"$C\"}"
+          -d "{\"schemaVersion\":1,\"label\":\"$LABEL\",\"message\":\"$PASSED/$TOTAL passed\",\"color\":\"$COLOR\"}"
