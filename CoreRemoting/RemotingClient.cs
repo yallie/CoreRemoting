@@ -424,7 +424,7 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
                  ? sessionKey ?? sessionId.ToByteArray()
                  : null;
 
-        if (!quiet)
+        if (!quiet && _channel.IsConnected)
         {
             var goodbyeMessage =
                 new GoodbyeMessage
