@@ -13,7 +13,7 @@ using CoreRemoting.Tests.Tools;
 using SecureRemotePassword;
 using Xunit;
 
-namespace CoreRemoting.Tests;
+namespace CoreRemoting.Tests.Sessions;
 
 using static SrpProtocolConstants;
 
@@ -41,13 +41,11 @@ public class SessionResumeTests
 
         int networkPort = Interlocked.Increment(ref _nextPort);
 
-        var server = StartServer(networkPort,
-            AuthenticationRequiredForResumeTests);
+        var server = StartServer(networkPort, AuthenticationRequiredForResumeTests);
 
         try
         {
-            using var client = CreateClient(networkPort,
-                AuthenticationRequiredForResumeTests);
+            using var client = CreateClient(networkPort, AuthenticationRequiredForResumeTests);
 
             await client.ConnectAsync()
                 .ConfigureAwait(false);
@@ -109,8 +107,7 @@ public class SessionResumeTests
 
         try
         {
-            using (var firstClient = CreateClient(networkPort,
-                AuthenticationRequiredForResumeTests))
+            using (var firstClient = CreateClient(networkPort, AuthenticationRequiredForResumeTests))
             {
                 await firstClient.ConnectAsync()
                     .ConfigureAwait(false);
@@ -287,7 +284,7 @@ public class SessionResumeTests
             KeySize = KeySize,
             ServerHostName = "localhost",
             ServerPort = serverPort,
-            ChannelConnectionName = $"{channelName}:{MessageEncryption}",
+            ChannelConnectionName = $"{channelName}_{GetType().Name}",
             KeepSessionAliveInterval = 0,
             PrivateKeyBlob = privateKeyBlob,
             ResumableSessionId = resumableSessionId
@@ -339,7 +336,7 @@ public class SessionResumeTests
             MessageEncryption = MessageEncryption,
             KeySize = KeySize,
             NetworkPort = networkPort,
-            ChannelConnectionName = $"{channelName}:{MessageEncryption}",
+            ChannelConnectionName = $"{channelName}_{GetType().Name}",
             AuthenticationRequired = authenticationRequired,
             AuthenticationProvider = authenticationRequired
                 ? new SrpAuthenticationProvider(new SampleAccountRepository())

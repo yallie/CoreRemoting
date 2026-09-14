@@ -9,7 +9,7 @@ using CoreRemoting.Tests.Tools;
 using CoreRemoting.Toolbox;
 using Xunit;
 
-namespace CoreRemoting.Tests;
+namespace CoreRemoting.Tests.Sessions;
 
 [Collection("CoreRemoting")]
 [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
@@ -98,7 +98,7 @@ public class SessionTests : IClassFixture<ServerFixture>
                 },
                 Channel = ServerChannel
             };
-        
+
         var server = new RemotingServer(serverConfig);
         server.Start();
 
@@ -106,7 +106,7 @@ public class SessionTests : IClassFixture<ServerFixture>
         {
             var clientAction = new Action<string, bool>((password, shouldThrow) =>
             {
-                using var client = 
+                using var client =
                     new RemotingClient(new ClientConfig()
                     {
                         ConnectionTimeout = 0,
@@ -119,7 +119,7 @@ public class SessionTests : IClassFixture<ServerFixture>
                         ],
                         Channel = ClientChannel
                     });
-            
+
                 if (shouldThrow)
                     Assert.Throws<SecurityException>(() => client.Connect());
                 else
@@ -129,7 +129,7 @@ public class SessionTests : IClassFixture<ServerFixture>
             var clientThread1 = new Thread(() => clientAction("wrong", true));
             clientThread1.Start();
             clientThread1.Join();
-        
+
             var clientThread2 = new Thread(() => clientAction("secret", false));
             clientThread2.Start();
             clientThread2.Join();
@@ -257,7 +257,7 @@ public class SessionTests : IClassFixture<ServerFixture>
             RemotingSession.Current.Close();
             return null;
         };
-        
+
         using var client = new RemotingClient(new ClientConfig
         {
             ConnectionTimeout = 0,
@@ -270,7 +270,7 @@ public class SessionTests : IClassFixture<ServerFixture>
         });
 
         client.Connect();
-        
+
         var proxy = client.CreateProxy<ITestService>();
 
         proxy.TestMethod(null);// server sends close_session

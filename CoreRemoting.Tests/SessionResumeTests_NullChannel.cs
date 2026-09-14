@@ -1,7 +1,7 @@
 using CoreRemoting.Channels;
 using CoreRemoting.Channels.Null;
 
-namespace CoreRemoting.Tests;
+namespace CoreRemoting.Tests.Sessions;
 
 public class SessionResumeTestsNullChannel : SessionResumeTests
 {
@@ -10,6 +10,16 @@ public class SessionResumeTestsNullChannel : SessionResumeTests
     protected override IClientChannel ClientChannel => new NullClientChannel();
 
     public class SessionResumeTestsNullNoEncryption : SessionResumeTestsNullChannel
+    {
+        protected override bool MessageEncryption => false;
+    }
+
+    public class SessionResumeTestsNullNoAuth : SessionResumeTestsNullChannel
+    {
+        protected override bool AuthenticationRequiredForResumeTests => false;
+    }
+
+    public class SessionResumeTestsNullNoAuthNoEncryption : SessionResumeTestsNullChannel
     {
         protected override bool MessageEncryption => false;
 

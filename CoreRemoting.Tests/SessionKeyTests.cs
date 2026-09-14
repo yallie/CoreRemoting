@@ -6,7 +6,7 @@ using CoreRemoting.DependencyInjection;
 using CoreRemoting.Tests.Tools;
 using Xunit;
 
-namespace CoreRemoting.Tests;
+namespace CoreRemoting.Tests.Sessions;
 
 [Collection("CoreRemoting")]
 public class SessionKeyTests
