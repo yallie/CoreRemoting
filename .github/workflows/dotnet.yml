@@ -86,3 +86,7 @@ jobs:
         curl -sS -X POST "https://getpantry.cloud/apiv1/pantry/$PANTRY_ID/basket/$BASKET" \
           -H "Content-Type: application/json" \
           -d "{\"schemaVersion\":1,\"label\":\"$LABEL\",\"message\":\"$PASSED/$TOTAL passed\",\"color\":\"$COLOR\"}"
+
+    - name: Purge image cache for badges
+      if: always() && github.event_name == 'push'
+      uses: kevincobain2000/action-camo-purge@v1
