@@ -3,6 +3,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CoreRemoting.Authentication;
@@ -269,6 +271,13 @@ public class SessionResumeTests
         return sessionId.Value;
     }
 
+    private string Shorten(string longString)
+    {
+        using var sha = SHA256.Create();
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(longString));
+        return Convert.ToHexString(hash);
+    }
+
     private RemotingClient CreateClient(
         int serverPort,
         bool authenticationRequired,
@@ -284,7 +293,7 @@ public class SessionResumeTests
             KeySize = KeySize,
             ServerHostName = "localhost",
             ServerPort = serverPort,
-            ChannelConnectionName = $"{channelName}_{GetType().Name}",
+            ChannelConnectionName = Shorten($"{channelName}_{GetType().Name}"),
             KeepSessionAliveInterval = 0,
             PrivateKeyBlob = privateKeyBlob,
             ResumableSessionId = resumableSessionId
@@ -336,7 +345,7 @@ public class SessionResumeTests
             MessageEncryption = MessageEncryption,
             KeySize = KeySize,
             NetworkPort = networkPort,
-            ChannelConnectionName = $"{channelName}_{GetType().Name}",
+            ChannelConnectionName = Shorten($"{channelName}_{GetType().Name}"),
             AuthenticationRequired = authenticationRequired,
             AuthenticationProvider = authenticationRequired
                 ? new SrpAuthenticationProvider(new SampleAccountRepository())
