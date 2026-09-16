@@ -350,4 +350,30 @@ public class EventStubTests
         Assert.Null(eventName);
         Assert.False(subscription);
     }
+
+    [Fact]
+    public async Task EventStub_can_invoke_events()
+    {
+        var simpleEventFired = new AsyncCounter();
+        void simpleHandler(object sender, EventArgs args) =>
+            simpleEventFired.Increment();
+        var simpleEventHandler = (EventHandler)simpleHandler;
+
+        // add event handler
+        var stub = EventStub.Create<ISampleInterface>();
+        stub.AddHandler(s => nameof(s.SimpleEvent), simpleEventHandler);
+
+        // invoke event handler
+        stub.Invoke(s => nameof(s.SimpleEvent), this, EventArgs.Empty);
+        await simpleEventFired.WaitForValue(1).Timeout(1);
+
+        // invoke by string name
+        stub.Invoke(nameof(ISampleInterface.SimpleEvent), this, EventArgs.Empty);
+        await simpleEventFired.WaitForValue(2).Timeout(1);
+
+        // remove event handler
+        stub.RemoveHandler(s => nameof(s.SimpleEvent), simpleEventHandler);
+        await Assert.ThrowsAsync<TimeoutException>(async () =>
+            await simpleEventFired.WaitForValue(3).Timeout(1));
+    }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using CoreRemoting.Toolbox;
@@ -45,7 +46,7 @@ public class EventStub
     public Type InterfaceType { get; private set; }
 
     /// <summary>
-    /// Gets or sets the <see cref="Delegate" /> with the specified event property name.
+    /// Gets the <see cref="Delegate" /> with the specified event property name.
     /// </summary>
     /// <param name="propertyName">Name of the event or delegate property.</param>
     public Delegate this[string propertyName] => DelegateHolders[propertyName].InvocationDelegate;
@@ -456,5 +457,58 @@ public class EventStub
         }
 
         return count;
+    }
+
+    /// <summary>
+    /// Invokes the specified event with provided arguments.
+    /// </summary>
+    public void Invoke(string eventName, params object[] arguments) =>
+        DelegateInvoker.Invoke(this[eventName], arguments);
+
+    /// <summary>
+    /// Creates <see cref="EventStub"/> for the <typeparamref name="TInterface"/> interface.
+    /// </summary>
+    /// <typeparam name="TInterface"></typeparam>
+    public static EventStore<TInterface> Create<TInterface>()
+        where TInterface : class =>
+            new EventStore<TInterface>();
+
+    /// <summary>
+    /// Strong-typed event store for <typeparamref name="TInterface"/>, for unit tests.
+    /// </summary>
+    /// <typeparam name="TInterface">Interface.</typeparam>
+    public class EventStore<TInterface> : EventStub
+        where TInterface : class
+    {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="EventStore{TInterface}"/>.
+        /// </summary>
+        public EventStore() : base(typeof(TInterface))
+        {
+        }
+
+        /// <summary>
+        /// Invokes the specified event with provided arguments.
+        /// </summary>
+        /// <param name="getName">A function that returns event name.</param>
+        /// <param name="arguments">Event arguments.</param>
+        public void Invoke(Func<TInterface, string> getName, params object[] arguments) =>
+            Invoke(getName(null), arguments);
+
+        /// <summary>
+        /// Gets the <see cref="Delegate" /> with the specified event property name.
+        /// </summary>
+        /// <param name="getName">A function that returns event name.</param>
+        /// <param name="handler">Event handler to add.</param>
+        public void AddHandler(Func<TInterface, string> getName, Delegate handler) =>
+            AddHandler(getName(null), handler);
+
+        /// <summary>
+        /// Gets the <see cref="Delegate" /> with the specified event property name.
+        /// </summary>
+        /// <param name="getName">A function that returns event name.</param>
+        /// <param name="handler">Event handler to add.</param>
+        public void RemoveHandler(Func<TInterface, string> getName, Delegate handler) =>
+            RemoveHandler(getName(null), handler);
     }
 }
