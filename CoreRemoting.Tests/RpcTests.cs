@@ -1433,6 +1433,54 @@ public class RpcTests : IClassFixture<ServerFixture>
     }
 
     [Fact]
+    public void Hidden_system_service_can_be_imported_on_server()
+    {
+        using var ctx = ValidationSyncContext.Install();
+
+        using var client = new RemotingClient(new ClientConfig()
+        {
+            ConnectionTimeout = 0,
+            InvocationTimeout = 0,
+            SendTimeout = 0,
+            MessageEncryption = false,
+            Channel = ClientChannel,
+            ServerPort = _serverFixture.Server.Config.NetworkPort,
+        });
+
+        client.Connect();
+
+        // service IDelegateProxyFactory is hidden and is only
+        // available on server as a dependency of a public service
+        var proxy = client.CreateProxy<IServiceWithHiddenDeps>();
+        Assert.True(proxy.IsImported);
+    }
+
+    [Fact]
+    public void Hidden_system_service_cannot_be_called_from_client()
+    {
+        using var ctx = ValidationSyncContext.Install();
+
+        using var client = new RemotingClient(new ClientConfig()
+        {
+            ConnectionTimeout = 0,
+            InvocationTimeout = 0,
+            SendTimeout = 0,
+            MessageEncryption = false,
+            Channel = ClientChannel,
+            ServerPort = _serverFixture.Server.Config.NetworkPort,
+        });
+
+        client.Connect();
+
+        // service IDelegateProxyFactory is hidden and cannot be called remotely
+        var proxy = client.CreateProxy<IDelegateProxyFactory>();
+        var ex = Assert.Throws<RemoteInvocationException>(() =>
+            proxy.Create(typeof(Action), null));
+
+        Assert.Contains("called remotely", ex.Message);
+    }
+
+    [Fact]
     [SuppressMessage("Usage", "xUnit1030:Do not call ConfigureAwait in test method", Justification = "Not applicable")]
     public async Task Logon_and_logoff_events_are_triggered()
     {
@@ -1915,6 +1963,4 @@ public class RpcTests : IClassFixture<ServerFixture>
             _serverFixture.ServerErrorCount = 0;
         }
     }
-
-
 }

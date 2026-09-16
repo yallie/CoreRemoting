@@ -671,6 +671,9 @@ public sealed class RemotingSession : IAsyncDisposable
                 throw new NetworkException("Session is not authenticated.");
 
             registration = _server.ServiceRegistry.GetServiceRegistration(callMessage.ServiceName);
+            if (registration.IsHiddenSystemService)
+                throw new NotSupportedException($"Service {registration.InterfaceType.Name} cannot be called remotely.");
+
             var service = _server.ServiceRegistry.GetService(callMessage.ServiceName);
             var serviceInterfaceType = registration.InterfaceType;
 

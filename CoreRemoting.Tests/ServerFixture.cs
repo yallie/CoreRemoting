@@ -96,6 +96,7 @@ public class ServerFixture : IDisposable
                         lifetime: ServiceLifetime.Scoped);
                     container.RegisterService<IServiceWithDeps, ServiceWithDeps>(
                         lifetime: ServiceLifetime.SingleCall);
+                    container.RegisterService<IServiceWithHiddenDeps, ServiceWithHiddenDeps>();
                 }
             };
 
