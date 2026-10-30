@@ -19,7 +19,6 @@ using CoreRemoting.Serialization;
 using CoreRemoting.Serialization.Bson;
 using CoreRemoting.Threading;
 using CoreRemoting.Toolbox;
-using CancellationTokenSource = System.Threading.CancellationTokenSource;
 using Timer = System.Timers.Timer;
 
 namespace CoreRemoting;
@@ -39,7 +38,6 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
     private readonly ClientConfig _config;
     private readonly AsyncLock _channelLock;
     private readonly AsyncLock _connectLock;
-    private readonly AsyncLock _disconnectLock;
     private Dictionary<Guid, ClientRpcContext> _activeCalls;
     private readonly AsyncLock _activeCallsLock;
     private Guid _sessionId;
@@ -85,7 +83,6 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
         _activeCallsLock = new();
         _channelLock = new();
         _connectLock = new();
-        _disconnectLock = new();
         _sessionLock = new();
         _currentlyPendingMessagesCounter = new(initialCount: 1);
         _delegateRegistry = new();
@@ -152,12 +149,15 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
 
         _goodbyeCompletedEvent.Set();
 
+        var graceful = _sessionClosedByServer.Value;
+        _sessionClosedByServer.Reset();
+
         if (activeCalls == null)
             return;
 
         foreach (var activeCall in activeCalls)
         {
-            if (_sessionClosedByServer.Value)
+            if (graceful)
             {
                 // Session was closed gracefully by server.
                 // Complete all pending calls without error to allow graceful shutdown of in-flight calls
@@ -175,7 +175,7 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
         }
 
         // Reset the flag after handling disconnect
-        _sessionClosedByServer.Reset();
+        //_sessionClosedByServer.Reset();
     }
 
     #endregion
@@ -434,7 +434,7 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
             }
             catch (Exception)
             {
-                await DisconnectAsync(quiet: true);
+                await DisconnectCoreAsync(quiet: true);
                 throw;
             }
 
@@ -455,91 +455,97 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
     /// <param name="quiet">When set to true, no goodbye message is sent to the server</param>
     public async Task DisconnectAsync(bool quiet = false)
     {
-        using (await _disconnectLock)
+        using (await _connectLock)
+            await DisconnectCoreAsync(quiet)
+                .ConfigureAwait(false);
+
+        AfterDisconnect?.Invoke();
+    }
+
+    private async Task DisconnectCoreAsync(bool quiet)
+    {
+        if (!_isConnected.TryReset())
+            return;
+
+        _currentlyPendingMessagesCounter.Signal();
+
+        await _currentlyPendingMessagesCounter.WaitAsync()
+            .ExpireMs(_config.WaitTimeForCurrentlyProcessedMessagesOnDispose)
+                .ConfigureAwait(false);
+
+        if (_channel == null)
+            return;
+
+        Guid sessionId;
+        byte[] sessionKey;
+        lock (_sessionLock)
         {
-            if (_isConnected.TryReset())
-                _currentlyPendingMessagesCounter.Signal();
-
-            await _currentlyPendingMessagesCounter.WaitAsync()
-                .ExpireMs(_config.WaitTimeForCurrentlyProcessedMessagesOnDispose)
-                    .ConfigureAwait(false);
-
-            if (_channel == null)
+            if (_sessionId == Guid.Empty)
                 return;
+            sessionId = _sessionId;
+            sessionKey = _sharedSecret;
+            _sessionId = Guid.Empty;
+            _sharedSecret = null;
+        }
 
-            Guid sessionId;
-            byte[] sessionKey;
-            lock (_sessionLock)
-            {
-                if (_sessionId == Guid.Empty)
-                    return;
-                sessionId = _sessionId;
-                sessionKey = _sharedSecret;
-                _sessionId = Guid.Empty;
-                _sharedSecret = null;
-            }
+        if (_keepSessionAliveTimer != null)
+        {
+            _keepSessionAliveTimer.Stop();
+            _keepSessionAliveTimer.Dispose();
+            _keepSessionAliveTimer = null;
+        }
 
-            if (_keepSessionAliveTimer != null)
-            {
-                _keepSessionAliveTimer.Stop();
-                _keepSessionAliveTimer.Dispose();
-                _keepSessionAliveTimer = null;
-            }
+        var sharedSecret =
+            MessageEncryption
+                ? sessionKey ?? sessionId.ToByteArray()
+                : null;
 
-            var sharedSecret =
-                MessageEncryption
-                     ? sessionKey ?? sessionId.ToByteArray()
-                     : null;
-
-            if (!quiet && _channel.IsConnected)
-            {
-                var goodbyeMessage =
-                    new GoodbyeMessage
-                    {
-                        SessionId = sessionId
-                    };
-
-                var wireMessage =
-                    MessageEncryptionManager.CreateWireMessage(
-                        messageType: "goodbye",
-                        serializer: Serializer,
-                        serializedMessage: Serializer.Serialize(goodbyeMessage),
-                        keyPair: _keyPair,
-                        sharedSecret: sharedSecret);
-
-                var rawData = Serializer.Serialize(wireMessage);
-
-                _goodbyeCompletedEvent.Reset();
-
-                try
+        if (!quiet && _channel.IsConnected)
+        {
+            var goodbyeMessage =
+                new GoodbyeMessage
                 {
-                    await _channel.RawMessageTransport.SendMessageAsync(rawData)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    // ignored
-                    // TODO: dispatch the exception
-                }
+                    SessionId = sessionId
+                };
 
-                await _goodbyeCompletedEvent.WaitAsync().ExpireMs(_config.WaitTimeForGoodbyeOnDisconnect)
+            var wireMessage =
+                MessageEncryptionManager.CreateWireMessage(
+                    messageType: "goodbye",
+                    serializer: Serializer,
+                    serializedMessage: Serializer.Serialize(goodbyeMessage),
+                    keyPair: _keyPair,
+                    sharedSecret: sharedSecret);
+
+            var rawData = Serializer.Serialize(wireMessage);
+
+            _goodbyeCompletedEvent.Reset();
+
+            try
+            {
+                await _channel.RawMessageTransport.SendMessageAsync(rawData)
                     .ConfigureAwait(false);
             }
-
-            using (await _channelLock)
+            catch (Exception)
             {
-                if (_channel is IClientChannel channel)
-                    await channel.DisconnectAsync()
-                        .ConfigureAwait(false);
+                // ignored
+                // TODO: dispatch the exception
             }
 
-            OnDisconnected();
-            _handshakeCompletedTaskSource = new();
-            _authenticationCompletedTaskSource = new();
-            Identity = null;
-
-            AfterDisconnect?.Invoke();
+            await _goodbyeCompletedEvent.WaitAsync().ExpireMs(_config.WaitTimeForGoodbyeOnDisconnect)
+                .ConfigureAwait(false);
         }
+
+        using (await _channelLock)
+        {
+            if (_channel is IClientChannel channel)
+                await channel.DisconnectAsync()
+                    .ConfigureAwait(false);
+        }
+
+        OnDisconnected();
+        _handshakeCompletedTaskSource = new();
+        _authenticationCompletedTaskSource = new();
+        Identity = null;
     }
 
     /// <summary>
@@ -875,11 +881,13 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
     /// </summary>
     private Task ProcessSessionClosedMessage(WireMessage message)
     {
-        // ignore a stale close notification for a connection that is already torn down
-        if (!IsConnected || !_isConnected.Value)
+        // ignore a stale close notification:
+        // - transport already down, or
+        // - no active session (mid-disconnect or handshake in progress)
+        if (!IsConnected || !_isConnected.Value || !HasSession)
             return Task.CompletedTask;
 
-        // Mark that the session was closed by server to gracefully complete in-flight calls
+        // mark that the session was closed by server to gracefully complete in-flight calls
         _sessionClosedByServer.Set();
         return DisconnectAsync(quiet: true);
     }
@@ -1320,7 +1328,6 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
         _keyPair?.Dispose();
         _activeCallsLock.Dispose();
         _connectLock.Dispose();
-        _disconnectLock.Dispose();
         _channelLock.Dispose();
     }
 
