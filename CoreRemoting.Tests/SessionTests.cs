@@ -344,7 +344,7 @@ public class SessionTests : IClassFixture<ServerFixture>
             Channel = ClientChannel
         });
 
-        var disconnected = new TaskCompletionSource<bool>();
+        var disconnected = new TaskCompletionSource<bool>(); // TaskCreationOptions.RunContinuationsAsynchronously
         client.AfterDisconnect += () => disconnected.TrySetResult(true);
         client.Connect();
 
