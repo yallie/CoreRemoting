@@ -36,10 +36,10 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
     private readonly ISessionKeyPair _keyPair;
     private readonly ClientDelegateRegistry _delegateRegistry;
     private readonly SubscriptionTracker _subscriptionTracker;
-    private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly ClientConfig _config;
     private readonly AsyncLock _channelLock;
     private readonly AsyncLock _connectLock;
+    private readonly AsyncLock _disconnectLock;
     private Dictionary<Guid, ClientRpcContext> _activeCalls;
     private readonly AsyncLock _activeCallsLock;
     private Guid _sessionId;
@@ -85,9 +85,9 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
         _activeCallsLock = new();
         _channelLock = new();
         _connectLock = new();
+        _disconnectLock = new();
         _sessionLock = new();
         _currentlyPendingMessagesCounter = new(initialCount: 1);
-        _cancellationTokenSource = new();
         _delegateRegistry = new();
         _subscriptionTracker = new();
         _handshakeCompletedTaskSource = new();
@@ -455,88 +455,91 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
     /// <param name="quiet">When set to true, no goodbye message is sent to the server</param>
     public async Task DisconnectAsync(bool quiet = false)
     {
-        if (_isConnected.TryReset())
-            _currentlyPendingMessagesCounter.Signal();
-
-        await _currentlyPendingMessagesCounter.WaitAsync()
-            .ExpireMs(_config.WaitTimeForCurrentlyProcessedMessagesOnDispose)
-                .ConfigureAwait(false);
-
-        if (_channel == null)
-            return;
-
-        Guid sessionId;
-        byte[] sessionKey;
-        lock (_sessionLock)
+        using (await _disconnectLock)
         {
-            if (_sessionId == Guid.Empty)
+            if (_isConnected.TryReset())
+                _currentlyPendingMessagesCounter.Signal();
+
+            await _currentlyPendingMessagesCounter.WaitAsync()
+                .ExpireMs(_config.WaitTimeForCurrentlyProcessedMessagesOnDispose)
+                    .ConfigureAwait(false);
+
+            if (_channel == null)
                 return;
-            sessionId = _sessionId;
-            sessionKey = _sharedSecret;
-            _sessionId = Guid.Empty;
-            _sharedSecret = null;
-        }
 
-        if (_keepSessionAliveTimer != null)
-        {
-            _keepSessionAliveTimer.Stop();
-            _keepSessionAliveTimer.Dispose();
-            _keepSessionAliveTimer = null;
-        }
+            Guid sessionId;
+            byte[] sessionKey;
+            lock (_sessionLock)
+            {
+                if (_sessionId == Guid.Empty)
+                    return;
+                sessionId = _sessionId;
+                sessionKey = _sharedSecret;
+                _sessionId = Guid.Empty;
+                _sharedSecret = null;
+            }
 
-        var sharedSecret =
-            MessageEncryption
-                 ? sessionKey ?? sessionId.ToByteArray()
-                 : null;
+            if (_keepSessionAliveTimer != null)
+            {
+                _keepSessionAliveTimer.Stop();
+                _keepSessionAliveTimer.Dispose();
+                _keepSessionAliveTimer = null;
+            }
 
-        if (!quiet && _channel.IsConnected)
-        {
-            var goodbyeMessage =
-                new GoodbyeMessage
+            var sharedSecret =
+                MessageEncryption
+                     ? sessionKey ?? sessionId.ToByteArray()
+                     : null;
+
+            if (!quiet && _channel.IsConnected)
+            {
+                var goodbyeMessage =
+                    new GoodbyeMessage
+                    {
+                        SessionId = sessionId
+                    };
+
+                var wireMessage =
+                    MessageEncryptionManager.CreateWireMessage(
+                        messageType: "goodbye",
+                        serializer: Serializer,
+                        serializedMessage: Serializer.Serialize(goodbyeMessage),
+                        keyPair: _keyPair,
+                        sharedSecret: sharedSecret);
+
+                var rawData = Serializer.Serialize(wireMessage);
+
+                _goodbyeCompletedEvent.Reset();
+
+                try
                 {
-                    SessionId = sessionId
-                };
+                    await _channel.RawMessageTransport.SendMessageAsync(rawData)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // ignored
+                    // TODO: dispatch the exception
+                }
 
-            var wireMessage =
-                MessageEncryptionManager.CreateWireMessage(
-                    messageType: "goodbye",
-                    serializer: Serializer,
-                    serializedMessage: Serializer.Serialize(goodbyeMessage),
-                    keyPair: _keyPair,
-                    sharedSecret: sharedSecret);
-
-            var rawData = Serializer.Serialize(wireMessage);
-
-            _goodbyeCompletedEvent.Reset();
-
-            try
-            {
-                await _channel.RawMessageTransport.SendMessageAsync(rawData)
+                await _goodbyeCompletedEvent.WaitAsync().ExpireMs(_config.WaitTimeForGoodbyeOnDisconnect)
                     .ConfigureAwait(false);
             }
-            catch (Exception)
+
+            using (await _channelLock)
             {
-                // ignored
-                // TODO: dispatch the exception
+                if (_channel is IClientChannel channel)
+                    await channel.DisconnectAsync()
+                        .ConfigureAwait(false);
             }
 
-            await _goodbyeCompletedEvent.WaitAsync().ExpireMs(_config.WaitTimeForGoodbyeOnDisconnect)
-                .ConfigureAwait(false);
+            OnDisconnected();
+            _handshakeCompletedTaskSource = new();
+            _authenticationCompletedTaskSource = new();
+            Identity = null;
+
+            AfterDisconnect?.Invoke();
         }
-
-        using (await _channelLock)
-        {
-            if (_channel is IClientChannel channel)
-                await channel.DisconnectAsync()
-                    .ConfigureAwait(false);
-        }
-
-        OnDisconnected();
-        _handshakeCompletedTaskSource = new();
-        _authenticationCompletedTaskSource = new();
-        Identity = null;
-
-        AfterDisconnect?.Invoke();
     }
 
     /// <summary>
@@ -872,6 +875,10 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
     /// </summary>
     private Task ProcessSessionClosedMessage(WireMessage message)
     {
+        // ignore a stale close notification for a connection that is already torn down
+        if (!IsConnected || !_isConnected.Value)
+            return Task.CompletedTask;
+
         // Mark that the session was closed by server to gracefully complete in-flight calls
         _sessionClosedByServer.Set();
         return DisconnectAsync(quiet: true);
@@ -1279,11 +1286,12 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
         await DisconnectAsync()
             .ConfigureAwait(false);
 
-        if (!_cancellationTokenSource.IsCancellationRequested)
-        {
-            _cancellationTokenSource.Cancel();
-            _cancellationTokenSource.Dispose();
-        }
+        _handshakeCompletedTaskSource.TrySetCanceled();
+        _authenticationResponseTaskSource.TrySetCanceled();
+        _authenticationCompletedTaskSource.TrySetCanceled();
+
+        await Task.WhenAll(_pendingUnsubscribes.Values)
+            .ConfigureAwait(false);
 
         _delegateRegistry.Clear();
 
@@ -1311,6 +1319,9 @@ public sealed class RemotingClient : IRemotingClient, IAuthenticationProvider
 
         _keyPair?.Dispose();
         _activeCallsLock.Dispose();
+        _connectLock.Dispose();
+        _disconnectLock.Dispose();
+        _channelLock.Dispose();
     }
 
     #endregion
