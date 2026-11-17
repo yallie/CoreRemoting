@@ -11,7 +11,7 @@ namespace CoreRemoting.Tests.Sessions;
 /// </summary>
 public static class SessionResumeTests_Channels
 {
-    public class NamedPipe : SessionResumeTests
+    private class NamedPipe : SessionResumeTests
     {
         protected override IServerChannel ServerChannel => new NamedPipeServerChannel();
 

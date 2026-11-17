@@ -50,7 +50,7 @@ public class InactiveSessionSweepTests
             NetworkPort = port,
             MessageEncryption = true,
             Serializer = new FailingOnSessionClosedSerializerAdapter(),
-            InactiveSessionSweepInterval = 1,
+            InactiveSessionSweepInterval = 5,
             MaximumSessionInactivityTime = 0,
             RegisterServicesAction = container =>
                 container.RegisterService<ITestService, TestService>(ServiceLifetime.Singleton)
