@@ -1291,7 +1291,7 @@ public partial class RpcTests : RpcTests_Base
         }
     }
 
-    [Fact(Skip = "Hangs on WatsonTcp channel on Linux")]
+    [Fact] // (Skip = "Hangs on WatsonTcp channel on Linux")]
     [SuppressMessage("Usage", "xUnit1030:Do not call ConfigureAwait(false) in test method", Justification = "<Pending>")]
     public virtual async Task Rpc_after_reconnect_does_not_throw_server_disconnected()
     {

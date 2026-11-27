@@ -69,7 +69,7 @@ jobs:
         if-no-files-found: warn
 
     - name: Update Pantry badge
-      if: always() && github.event_name == 'push'
+      if: always() && github.event_name == 'push' && !contains(github.event.head_commit.message, 'badge')
       shell: bash
       env:
         PANTRY_ID: c8c30959-454c-468f-9df1-13957368300e
